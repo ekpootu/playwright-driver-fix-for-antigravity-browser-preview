@@ -253,7 +253,6 @@ else:
 ```
 ├── .gitignore                      # Standard repository hygiene exclusions
 ├── cover.png                       # High-resolution visual cover & social preview
-├── design-theme-example.jpg        # Reference design & theme specification
 ├── Fix-AntigravityPlaywright.md    # Agent-optimized instructions for AI auto-fix
 ├── Fix-PlaywrightDriver.ps1        # Automated PowerShell fix script (Windows)
 ├── Fix-PlaywrightDriver.sh         # Automated Bash fix script (macOS & Linux)
