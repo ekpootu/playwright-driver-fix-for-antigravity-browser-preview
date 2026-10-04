@@ -33,6 +33,13 @@ You **do not** need to download drivers from deprecated endpoints. The Playwrigh
 
 As an AI Agent helping the user, follow these exact steps sequentially using the terminal:
 
+> **Agent Note on Workspace:** If this fix repository is not yet cloned in your user's current project workspace, clone it first to access the verified driver archives:
+> ```bash
+> git clone https://github.com/ekpootu/playwright-driver-fix-for-antigravity-browser-preview.git
+> cd playwright-driver-fix-for-antigravity-browser-preview
+> ```
+> *(Or execute `.\Fix-PlaywrightDriver.ps1 -Preflight` directly if already downloaded).*
+
 ### Step 1: Populate the Playwright Go Cache
 
 #### Primary Method (Using Bundled Offline Driver Zip):
@@ -114,3 +121,90 @@ if ($nodeExists -and $cliExists) {
 
 **Final Instruction to User:**  
 Inform the user that the fix is complete and request that they **restart Antigravity IDE completely** (closing all active IDE windows and reopening) so the Go Language Server detects the local driver cache.
+
+---
+
+## 🛡️ Antigravity Harness Bootstrap & Preflight Integration
+
+### 💡 One Thing to Add to Your Harness (Architecture & Best Practice)
+
+When using Antigravity IDE or the Antigravity CLI as an **automated AI-agent harness**, autonomous coding pipeline, or developer provisioning system, make the driver-cache check an official part of your **harness bootstrap preflight**:
+
+```
+if Playwright 1.57.0 driver exists:
+    continue
+else:
+    verify driver archive integrity (SHA-256)
+    install bundled/offline driver
+    install Chromium
+    verify browser launch & CDP readiness
+```
+
+### Complete Execution Flow
+
+```
+Antigravity IDE / CLI / Agent Harness
+                 │
+                 ▼
+        Go Language Server
+                 │
+                 ▼
+           playwright-go
+                 │
+                 ├── checks %LOCALAPPDATA%\ms-playwright-go\1.57.0
+                 │
+                 ▼
+            Driver Exists
+                 │
+                 ├── node.exe (verified)
+                 ├── package/
+                 │     └── cli.js
+                 │
+                 ▼
+          Install Chromium
+                 │
+                 ▼
+   Browser Preview / open_browser_url
+                 │
+                 ▼
+             ✅ WORKS
+```
+
+Instead of the failing CDN route:
+
+```
+playwright-go ──► Azure CDN (playwright.azureedge.net) ──► 404 Not Found ──► 💥 Browser Preview Failure
+```
+
+### Key Operational Benefits
+
+1. **Zero 404 Exceptions**: Fresh developer machines and runner instances never attempt to contact the decommissioned Microsoft Azure CDN.
+2. **Pinned Cryptographic Integrity**: By pinning driver archives with **SHA-256** checksums, you prevent supply-chain tampering and ensure reproducible environments.
+3. **CDP Port Collision Remediation**: Detects and resolves TCP port `9222` conflicts (e.g. from background zombie browser processes) that trigger `open_browser_url failed with failed to create browser context: failed to resolve CDP URLs: get CDP version info: could not resolve IP for 127.0.0.1 / timed out`.
+
+### 🔒 Official Pinned SHA-256 Checksums
+
+| Driver Archive | Target Platform | Architecture | SHA-256 Checksum |
+| :--- | :--- | :--- | :--- |
+| `playwright-1.57.0-win32_x64.zip` | Windows | x64 (64-bit) | `9F447E15A3688397222588938E9D848B680C1A0582118B37970B383622D8DABD` |
+| `playwright-1.57.0-mac-arm64.zip` | macOS | Apple Silicon (arm64) | `7FEE6872B7225A83FD1195F1542D884B128C284E90AEDCEDFA71A8E960B8447B` |
+
+### 🚀 Automated Preflight Commands for AI Harnesses & CI/CD
+
+**On Windows (PowerShell):**
+```powershell
+# Non-destructive preflight check (exits 0 if ready, provisions if missing)
+.\Fix-PlaywrightDriver.ps1 -Preflight
+
+# Force clean reinstallation and clear port 9222 collisions
+.\Fix-PlaywrightDriver.ps1 -Force -ClearPortCollision
+```
+
+**On macOS & Linux (Bash):**
+```bash
+# Non-destructive preflight check
+./Fix-PlaywrightDriver.sh --preflight
+
+# Force reinstall
+./Fix-PlaywrightDriver.sh --force
+```

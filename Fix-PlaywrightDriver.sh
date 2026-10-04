@@ -23,6 +23,24 @@ echo ""
 PW_VERSION="1.57.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Pinned SHA-256 Checksums
+PINNED_MAC_ARM64_SHA256="7fee6872b7225a83fd1195f1542d884b128c284e90aedcedfa71a8e960b8447b"
+
+# Parse CLI arguments
+FORCE=false
+PREFLIGHT=false
+
+for arg in "$@"; do
+    case "$arg" in
+        --force|-f)
+            FORCE=true
+            ;;
+        --preflight|-p)
+            PREFLIGHT=true
+            ;;
+    esac
+done
+
 # Detect Operating System & Architecture
 OS_TYPE="$(uname -s)"
 ARCH_TYPE="$(uname -m)"
@@ -42,6 +60,17 @@ TARGET_CLI="$TARGET_DIR/package/cli.js"
 
 mkdir -p "$TARGET_DIR"
 
+# Preflight Check
+if [[ -f "$TARGET_NODE" && -f "$TARGET_CLI" && "$FORCE" == false ]]; then
+    echo -e "${GREEN}[PREFLIGHT PASSED] Playwright Go driver cache (v$PW_VERSION) is already populated.${NC}"
+    echo -e "                   Path: $TARGET_DIR"
+    if [[ "$PREFLIGHT" == true ]]; then
+        echo -e "${GREEN}[PREFLIGHT] Preflight check succeeded. Driver is ready.${NC}"
+        exit 0
+    fi
+    echo -e "                   Use --force to reinstall if needed."
+fi
+
 echo -e "${CYAN}[1/3] Preparing Playwright Go driver cache (v$PW_VERSION)...${NC}"
 echo -e "      Target path: $TARGET_DIR"
 
@@ -57,7 +86,7 @@ if [[ "$OS_TYPE" == "Darwin" && ("$ARCH_TYPE" == "arm64" || "$ARCH_TYPE" == "aar
 else
     CANDIDATE_ZIPS=(
         "$SCRIPT_DIR/Playwright-1.5.7.0-Drivers/playwright-1.57.0-linux.zip"
-        "$SCRIPT_DIR/playwright-1.5.7.0-drivers/playwright-1.57.0-linux.zip"
+        "$SCRIPT_DIR/playwright-1.57.0-drivers/playwright-1.57.0-linux.zip"
     )
 fi
 
@@ -70,7 +99,31 @@ for z in "${CANDIDATE_ZIPS[@]}"; do
 done
 
 if [[ -n "$FOUND_ZIP" ]]; then
-    echo -e "${CYAN}      Extracting pre-packaged offline driver zip: $(basename "$FOUND_ZIP")...${NC}"
+    ZIP_NAME="$(basename "$FOUND_ZIP")"
+    echo -e "${CYAN}      Verifying and extracting pre-packaged offline driver zip: $ZIP_NAME...${NC}"
+
+    # SHA-256 Checksum Verification
+    if [[ "$ZIP_NAME" == "playwright-1.57.0-mac-arm64.zip" ]]; then
+        echo -e "      Checking SHA-256 integrity hash..."
+        ACTUAL_HASH=""
+        if command -v shasum >/dev/null 2>&1; then
+            ACTUAL_HASH="$(shasum -a 256 "$FOUND_ZIP" | awk '{print $1}')"
+        elif command -v sha256sum >/dev/null 2>&1; then
+            ACTUAL_HASH="$(sha256sum "$FOUND_ZIP" | awk '{print $1}')"
+        fi
+
+        if [[ -n "$ACTUAL_HASH" ]]; then
+            if [[ "${ACTUAL_HASH,,}" == "${PINNED_MAC_ARM64_SHA256,,}" ]]; then
+                echo -e "${GREEN}      [VERIFIED] SHA-256 checksum matched: $ACTUAL_HASH${NC}"
+            else
+                echo -e "${RED}[ERROR] SHA-256 checksum mismatch for $ZIP_NAME!${NC}"
+                echo -e "${YELLOW}        Expected: $PINNED_MAC_ARM64_SHA256${NC}"
+                echo -e "${RED}        Actual:   $ACTUAL_HASH${NC}"
+                exit 1
+            fi
+        fi
+    fi
+
     unzip -q -o "$FOUND_ZIP" -d "$TARGET_DIR"
     INSTALLED_VIA_ZIP=true
     echo -e "${GREEN}      Extracted successfully into: $TARGET_DIR${NC}"
@@ -130,8 +183,19 @@ fi
 "$TARGET_NODE" "$TARGET_CLI" install chromium chromium-headless-shell
 echo -e "${GREEN}      Chromium browser binaries installed successfully.${NC}"
 
-# Step 3: Verification
-echo -e "${CYAN}[3/3] Verifying installation...${NC}"
+# Step 3: Verification & Port Availability
+echo -e "${CYAN}[3/3] Verifying configuration & port availability...${NC}"
+
+# Check for potential CDP port 9222 collisions
+if command -v lsof >/dev/null 2>&1; then
+    PORT_PID="$(lsof -ti :9222 2>/dev/null | head -n 1 || true)"
+    if [[ -n "$PORT_PID" ]]; then
+        echo -e "${YELLOW}[WARNING] Port 9222 (CDP Remote Debugging) is currently held by PID $PORT_PID.${NC}"
+        echo -e "${YELLOW}          This may trigger 'could not resolve IP for 127.0.0.1 / timed out' errors.${NC}"
+        echo -e "${YELLOW}          If this is a stale zombie process, terminate it using: kill -9 $PORT_PID${NC}"
+    fi
+fi
+
 if [[ -x "$TARGET_NODE" && -f "$TARGET_CLI" ]]; then
     echo ""
     echo -e "${GREEN}==========================================================${NC}"
